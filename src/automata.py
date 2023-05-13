@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict
 
 from src.state import State
 from src.transaction import Transaction
@@ -9,82 +9,114 @@ class Automata:
         self.label: str = label
         self.is_total: bool = False
 
-        self.states: List[State] = []
+        self.sid: int = 0
+        self.tid: int = 0
+
+        self.states: Dict[int, State] = {}
         self.alphabet: List[str] = alphabet
-        self.transactions: List[Transaction] = []
+        self.transactions: Dict[int, Transaction] = {}
         self.initial_state: State = None
-        self.final_states: List[State] = []
+        self.final_states: Dict[int, State] = {}
 
     def check_state_existance(self, label: str) -> int:
-        for i, s in enumerate(self.states):
-            if s.label == label:
-                return i
+        for sid, state in self.states.items():
+            if state.label == label:
+                return sid
         return -1
 
     def create_state(self, label: str, is_initial: bool = False, is_final: bool = False):
 
         if self.check_state_existance(label=label) == -1:
-
-            self.states.append(
-                State(
-                    label=label,
-                    is_initial=is_initial,
-                    is_final=is_final
-                )
+            self.states[self.sid] = State(
+                label=label,
+                is_initial=is_initial,
+                is_final=is_final
             )
 
             if is_initial:
-                self.initial_state = self.states[-1]
+                self.initial_state = self.states[self.sid]
 
             if is_final:
-                self.final_states.append(self.states[-1])
+                self.final_states[self.sid] = self.states[self.sid]
+
+            self.sid += 1
 
         else:
             raise ValueError(f"A state called {label} already exists.")
 
     def update_state(self, label: str, new_label: str = None, is_initial: bool = None, is_final: bool = None):
+        sid: int = self.check_state_existance(label=label)
 
-        i: int = self.check_state_existance(label=label)
+        self.states[sid].label = new_label if new_label else self.states[sid].label
+        self.states[sid].is_initial = is_initial if is_initial else self.states[sid].is_initial
+        self.states[sid].is_final = is_final if is_final else self.states[sid].is_final
 
-        if i >= 0:
-            self.states[i].label = new_label if new_label else self.states[i].label
-            self.states[i].is_initial = is_initial if is_initial else self.states[i].is_initial
-            self.states[i].is_final = is_final if is_final else self.states[i].is_final
+        if sid >= 0:
+            # update transactions
+            for tid in self.transactions.keys():
+                departure_label: str = self.transactions[tid].departure_state.label
+                arrival_label: str = self.transactions[tid].arrival_state.label
+                symbol: str = self.transactions[tid].symbol
 
-            if is_initial:
+                if departure_label == new_label:
+                    self.transactions[tid].update_label()
+                    self.update_transaction(
+                        label=f"({departure_label},{symbol})->{arrival_label}",
+                        new_departure_label=new_label
+                    )
+
+                if arrival_label == new_label:
+                    self.transactions[tid].update_label()
+                    self.update_transaction(
+                        label=f"({departure_label},{symbol})->{arrival_label}",
+                        new_arrival_label=new_label
+                    )
+
+            if is_initial is True:
                 # the updated state becomes initial, regarless of the existence of one
-                self.initial_state = self.states[i]
-            else:
-                if self.initial_state == self.states[i]:
+                self.initial_state = self.states[sid]
+            elif is_initial is False:
+                if self.initial_state == self.states[sid]:
                     # if the updated state was initial and ceases to be
                     self.initial_state = None
+
+            if is_final is True:
+                # the updated state becomes final
+                self.final_states[sid] = self.states[sid]
+            elif is_final is False:
+                if sid in self.final_states.keys():
+                    # if the updated state was final and ceases to be
+                    del self.final_states[sid]
         else:
             raise ValueError(f"State {label} does not exist.")
 
     def delete_state(self, label: str):
 
-        i: int = self.check_state_existance(label=label)
+        sid: int = self.check_state_existance(label=label)
 
-        if i >= 0:
-            if self.initial_state == self.states[i]:
+        if sid >= 0:
+            # if initial, remove initial
+            if self.initial_state == self.states[sid]:
                 self.initial_state = None
 
-            if self.states[i] in self.final_states:
-                self.final_states.remove(self.states[i])
+            # if final, remove final
+            if sid in self.final_states.keys():
+                del self.final_states[sid]
 
-            it_to_remove: List[int] = []
-            for it, t in enumerate(self.transactions):
-                if t.departure_state == self.states[i] or t.arrival_state == self.states[i]:
-                    it_to_remove.append(it)
+            # remove transactions
+            t_labels_remove: List[int] = []
+            for tid, transaction in self.transactions.items():
+                if transaction.departure_state == self.states[sid] or transaction.arrival_state == self.states[sid]:
+                    t_labels_remove.append(tid)
 
-            for it in it_to_remove:
-                departure_label: str = self.transactions[it].departure_state.label
-                arrival_label: str = self.transactions[it].arrival_state.label
-                symbol: str = self.transactions[it].symbol
-                self.delete_transaction(departure_label=departure_label, arrival_label=arrival_label, symbol=symbol)
+            for tid in t_labels_remove:
+                departure_label: str = self.transactions[tid].departure_state.label
+                arrival_label: str = self.transactions[tid].arrival_state.label
+                symbol: str = self.transactions[tid].symbol
+                self.delete_transaction(label=f"({departure_label},{symbol})->{arrival_label}")
 
-            del self.states[i]
-
+            # delete state
+            del self.states[sid]
         else:
             raise ValueError(f"State {label} does not exist.")
 
@@ -94,29 +126,27 @@ class Automata:
             self.delete_state(label=label)
 
     def check_transaction_existance(self, label: str) -> int:
-
-        for i, t in enumerate(self.transactions):
-            if t.label == label:
-                return i
+        for tid, transaction in self.transactions.items():
+            if transaction.label == label:
+                return tid
         return -1
 
-    def create_transaction(self, departure_label: str, arrival_label: str, symbol):
+    def create_transaction(self, departure_label: str, arrival_label: str, symbol: str):
 
-        if self.check_transaction_existance(label=f"({departure_label},{symbol})->{arrival_label}") == -1:
+        t_label: str = f"({departure_label},{symbol})->{arrival_label}"
 
-            i_departure: int = self.check_state_existance(label=departure_label)
-            i_arrival: int = self.check_state_existance(label=arrival_label)
-
-            if i_departure >= 0:
-                if i_arrival >= 0:
+        if self.check_transaction_existance(label=t_label) == -1:
+            departure_sid: int = self.check_state_existance(label=departure_label)
+            arrival_sid: int = self.check_state_existance(label=arrival_label)
+            if departure_sid >= 0:
+                if arrival_sid >= 0:
                     if symbol in self.alphabet:
-                        self.transactions.append(
-                            Transaction(
-                                departure_state=self.states[i_departure],
-                                arrival_state=self.states[i_arrival],
-                                symbol=symbol
-                            )
+                        self.transactions[self.tid] = Transaction(
+                            departure_state=self.states[departure_sid],
+                            arrival_state=self.states[arrival_sid],
+                            symbol=symbol
                         )
+                        self.tid += 1
                     else:
                         raise ValueError(f"Symbol {symbol} does not exist in alphabet.")
                 else:
@@ -127,32 +157,39 @@ class Automata:
             raise ValueError(f"A transaction from {departure_label} to {arrival_label} consuming {symbol} already exists.")
 
     def update_transaction(
-            self, departure_label: str, arrival_label: str, symbol: str,
-            new_label_departure: str, new_label_arrival, new_symbol: str
+            self, label: str, new_departure_label: str = None, new_arrival_label: str = None, new_symbol: str = None
     ):
 
-        i: int = self.check_transaction_existance(label=f"({departure_label},{symbol})->{arrival_label}")
+        tid: int = self.check_transaction_existance(label=label)
 
-        if i >= 0:
-            i_departure: int = self.check_state_existance(label=new_label_departure)
-            i_arrival: int = self.check_state_existance(label=new_label_arrival)
+        if tid >= 0:
+            departure_sid: int = self.check_state_existance(label=new_departure_label)
+            arrival_sid: int = self.check_state_existance(label=new_arrival_label)
 
-            self.transactions[i].departure_state = self.states[i_departure] if new_label_departure else self.transactions[i].departure_state
-            self.transactions[i].arrival_state = self.states[i_arrival] if new_label_arrival else self.transactions[i].arrival_state,
-            self.transactions[i].symbol = new_symbol if new_symbol else self.transactions[i].symbol,
+            if departure_sid >= 0:
+                self.transactions[tid].departure_state = self.states[departure_sid] if new_departure_label else self.transactions[tid].departure_state
 
-    def delete_transaction(self, departure_label: str, arrival_label: str, symbol: str,):
+            if arrival_sid >= 0:
+                self.transactions[tid].arrival_state = self.states[arrival_sid] if new_arrival_label else self.transactions[tid].arrival_state
 
-        i: int = self.check_transaction_existance(label=f"({departure_label},{symbol})->{arrival_label}")
+            self.transactions[tid].symbol = new_symbol if new_symbol and new_symbol in self.alphabet else self.transactions[tid].symbol
+        else:
+            raise ValueError(f"The transaction {label} doesn't exist.")
 
-        if i >= 0:
-            del self.transactions[i]
+    def delete_transaction(self, label: str):
+
+        tid: int = self.check_transaction_existance(label=label)
+
+        if tid >= 0:
+            del self.transactions[tid]
+        else:
+            raise ValueError(f"The transaction {label} doesn't exist.")
 
     def __str__(self):
-        Q: str = ', '.join([str(state) for state in self.states])
+        Q: str = ', '.join([str(state) for state in self.states.values()])
         S: str = ', '.join([str(symbol) for symbol in self.alphabet])
-        d: str = ', '.join([str(transaction) for transaction in self.transactions])
+        d: str = ', '.join([str(transaction) for transaction in self.transactions.values()])
         s0: str = str(self.initial_state)
-        F: str = ', '.join([str(state) for state in self.final_states])
+        F: str = ', '.join([str(state) for state in self.final_states.values()])
 
         return f"""{self.label} = (\n\t{{{Q}}},\n\t{{{S}}},\n\t{{{d}}},\n\t{s0},\n\t{{{F}}}\n)"""

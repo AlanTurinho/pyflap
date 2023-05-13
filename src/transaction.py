@@ -9,6 +9,9 @@ class Transaction:
         self.label: str = f"({str(self.departure_state)},{self.symbol})->{str(self.arrival_state)}"
         self.loop: bool = True if departure_state == arrival_state else False
 
+    def update_label(self):
+        self.label: str = f"({str(self.departure_state)},{self.symbol})->{str(self.arrival_state)}"
+
     def __str__(self):
         return self.label
 
