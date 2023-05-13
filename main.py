@@ -1,16 +1,17 @@
 from src.automata import Automata
 
-a = Automata(label="M", alphabet=['a', 'b', 'c', 'd', 'e'])
+m = Automata(label="M1a", alphabet=['a', 'b', 'c'])
 
-a.create_state(label="q0", is_initial=True, is_final=False)
-a.create_state(label="q1", is_initial=False, is_final=True)
-a.create_state(label="q2", is_initial=False, is_final=False)
-a.create_state(label="q3", is_initial=False, is_final=True)
-a.create_state(label="q4", is_initial=False, is_final=False)
+m.create_state(label="q0", is_initial=True, is_final=False)
+m.create_state(label="q1", is_initial=False, is_final=True)
+m.create_state(label="q2", is_initial=False, is_final=True)
 
-a.create_transaction(departure_label="q0", arrival_label="q1", symbol="a")
-a.create_transaction(departure_label="q0", arrival_label="q2", symbol="a")
-a.create_transaction(departure_label="q1", arrival_label="q3", symbol="b")
-a.create_transaction(departure_label="q1", arrival_label="q4", symbol="c")
+m.create_transaction(departure_label="q0", arrival_label="q1", symbol="a")
+m.create_transaction(departure_label="q1", arrival_label="q1", symbol="b")
+m.create_transaction(departure_label="q1", arrival_label="q2", symbol="c")
+m.create_transaction(departure_label="q2", arrival_label="q2", symbol="c")
+m.create_transaction(departure_label="q2", arrival_label="q1", symbol="a")
 
-print(a)
+print(m.tabular_notation)
+
+# M1a.recognize(string="abbbccaccccabaaa")

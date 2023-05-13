@@ -1,4 +1,6 @@
-from typing import List, Dict
+from typing import List, Dict, Union
+
+import pandas as pd
 
 from src.state import State
 from src.transaction import Transaction
@@ -17,6 +19,26 @@ class Automata:
         self.transactions: Dict[int, Transaction] = {}
         self.initial_state: State = None
         self.final_states: Dict[int, State] = {}
+
+        self.tabular_notation: pd.DataFrame = self.update_tabular_notation()
+
+    def update_tabular_notation(self) -> pd.DataFrame:
+
+        data: Dict[str, List[Union[str, bool, List[str]]]] = {
+            "sid": [sid for sid in self.states.keys()],
+            "initial": [state.is_initial for state in self.states.values()],
+            "final": [state.is_final for state in self.states.values()],
+            "state": [state.label for state in self.states.values()],
+        }
+
+        for symbol in self.alphabet:
+            symbol_transactions: Dict[str, List[str]] = {state: [] for state in data["state"]}
+            for transaction in self.transactions.values():
+                if transaction.symbol == symbol:
+                    symbol_transactions[transaction.departure_state.label].append(transaction.arrival_state.label)
+            data[symbol] = [arrival_states for arrival_states in symbol_transactions.values()]
+
+        return pd.DataFrame(data=data)
 
     def check_state_existance(self, label: str) -> int:
         for sid, state in self.states.items():
@@ -40,6 +62,9 @@ class Automata:
                 self.final_states[self.sid] = self.states[self.sid]
 
             self.sid += 1
+
+            self.tabular_notation = self.update_tabular_notation()
+
 
         else:
             raise ValueError(f"A state called {label} already exists.")
@@ -87,6 +112,8 @@ class Automata:
                 if sid in self.final_states.keys():
                     # if the updated state was final and ceases to be
                     del self.final_states[sid]
+
+            self.tabular_notation: pd.DataFrame = self.update_tabular_notation()
         else:
             raise ValueError(f"State {label} does not exist.")
 
@@ -117,6 +144,9 @@ class Automata:
 
             # delete state
             del self.states[sid]
+
+            self.tabular_notation = self.update_tabular_notation()
+
         else:
             raise ValueError(f"State {label} does not exist.")
 
@@ -147,6 +177,8 @@ class Automata:
                             symbol=symbol
                         )
                         self.tid += 1
+
+                        self.tabular_notation = self.update_tabular_notation()
                     else:
                         raise ValueError(f"Symbol {symbol} does not exist in alphabet.")
                 else:
@@ -173,6 +205,9 @@ class Automata:
                 self.transactions[tid].arrival_state = self.states[arrival_sid] if new_arrival_label else self.transactions[tid].arrival_state
 
             self.transactions[tid].symbol = new_symbol if new_symbol and new_symbol in self.alphabet else self.transactions[tid].symbol
+
+            self.tabular_notation = self.update_tabular_notation()
+
         else:
             raise ValueError(f"The transaction {label} doesn't exist.")
 
@@ -182,8 +217,28 @@ class Automata:
 
         if tid >= 0:
             del self.transactions[tid]
+
+            self.tabular_notation = self.update_tabular_notation()
         else:
             raise ValueError(f"The transaction {label} doesn't exist.")
+
+    def delete_transactions(self, labels: List[str]):
+
+        for label in labels:
+            tid: int = self.check_transaction_existance(label=label)
+
+            if tid >= 0:
+                del self.transactions[tid]
+            else:
+                raise ValueError(f"The transaction {label} doesn't exist.")
+
+    def recognize(self, string: str) -> bool:
+
+        cursor: int = 0
+
+        sid: int = self.check_state_existance(label=self.initial_state.label) if self.initial_state else None
+
+        available_transactions: List[Transaction] = [t for t in self.transactions.values() if t.departure_state.label == self.states[sid].label]
 
     def __str__(self):
         Q: str = ', '.join([str(state) for state in self.states.values()])
