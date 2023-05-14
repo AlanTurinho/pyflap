@@ -1,4 +1,5 @@
 from typing import List, Dict, Union
+from random import randint
 
 import pandas as pd
 
@@ -232,13 +233,43 @@ class Automata:
             else:
                 raise ValueError(f"The transaction {label} doesn't exist.")
 
-    def recognize(self, string: str) -> bool:
+    def recognize(self, string: str, verbose: bool = False) -> bool:
+
+        def choose_transaction(sid: int, cursor: int) -> List[Transaction]:
+
+            available_transactions: List[Transaction] = []
+
+            for transaction in self.transactions.values():
+                try:
+                    if (transaction.departure_state.label == self.states[sid].label) and (transaction.symbol == string[cursor]):
+                        available_transactions.append(transaction)
+                except IndexError as e:
+                    return []
+
+            return available_transactions
 
         cursor: int = 0
-
         sid: int = self.check_state_existance(label=self.initial_state.label) if self.initial_state else None
+        available_transactions: List[Transaction] = choose_transaction(sid=sid, cursor=cursor)
 
-        available_transactions: List[Transaction] = [t for t in self.transactions.values() if t.departure_state.label == self.states[sid].label]
+        if verbose:
+            print(f"({self.states[sid].label},{string[cursor:]})", end=' -| ')
+
+        while cursor <= len(string) and len(available_transactions) > 0:
+            chosen_transaction = available_transactions[randint(0, len(available_transactions)-1)]
+
+            cursor += 1
+            sid = self.check_state_existance(label=chosen_transaction.arrival_state.label)
+            available_transactions: List[Transaction] = choose_transaction(sid=sid, cursor=cursor)
+
+            if verbose:
+                print(f"({self.states[sid].label},{string[cursor:]})", end=' -| ')
+
+        if self.states[sid].is_final and cursor >= len(string):
+            if verbose:
+                print(f"({self.states[sid].label},{None})")
+            return True
+        return False
 
     def __str__(self):
         Q: str = ', '.join([str(state) for state in self.states.values()])
