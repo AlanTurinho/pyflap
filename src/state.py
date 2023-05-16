@@ -1,5 +1,9 @@
 
 class State:
+    """
+    Labeled element responsible for recording information gathered in the past, but also relevant for future decisions.
+    """
+
     def __init__(self, label: str, is_initial: bool = False, is_final: bool = False):
         self.label: str = label
         self.is_initial: bool = is_initial
