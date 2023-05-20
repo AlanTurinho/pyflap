@@ -16,3 +16,10 @@ class State:
         if not isinstance(other, State):
             return NotImplemented
         return self.label == other.label
+
+
+class MooreState(State):
+
+    def __init__(self, label: str, is_initial: bool = False, is_final: bool = False):
+        super().__init__(label=label, is_initial=is_initial, is_final=is_final)
+        pass

@@ -3,19 +3,21 @@ from random import randint
 
 import pandas as pd
 
+from src.symbol import Symbol
+from src.alphabet import Alphabet
 from src.state import State
-from src.transaction import Transaction
+from src.transaction import Transaction, MealyTransaction
 
 
 class Automata:
     """Entities composed of states and transitions, used to accept or to reject a sentence."""
 
-    def __init__(self, label: str, alphabet: List[str]):
+    def __init__(self, label: str, alphabet: Alphabet):
         self.label: str = label
 
         # quintuple of elements that define an automata
         self.states: Dict[int, State] = {}
-        self.alphabet: List[str] = alphabet
+        self.alphabet: Alphabet = alphabet
         self.transactions: Dict[int, Transaction] = {}
         self.initial_state: State = None
         self.final_states: Dict[int, State] = {}
@@ -42,7 +44,7 @@ class Automata:
             for transaction in self.transactions.values():
                 if transaction.symbol == symbol:
                     symbol_transactions[transaction.departure_state.label].append(transaction.arrival_state.label)
-            data[symbol] = [arrival_states for arrival_states in symbol_transactions.values()]
+            data[str(symbol)] = [arrival_states for arrival_states in symbol_transactions.values()]
 
         return pd.DataFrame(data=data)
 
@@ -94,13 +96,13 @@ class Automata:
             for tid in self.transactions.keys():
                 departure_label: str = self.transactions[tid].departure_state.label
                 arrival_label: str = self.transactions[tid].arrival_state.label
-                symbol: str = self.transactions[tid].symbol
+                symbol_label: str = self.transactions[tid].symbol.label
 
                 # if the updated state is a departure, update label
                 if departure_label == new_label:
                     self.transactions[tid].update_label()
                     self.update_transaction(
-                        label=f"({departure_label},{symbol})->{arrival_label}",
+                        label=f"({departure_label},{symbol_label})->{arrival_label}",
                         new_departure_label=new_label
                     )
 
@@ -108,7 +110,7 @@ class Automata:
                 if arrival_label == new_label:
                     self.transactions[tid].update_label()
                     self.update_transaction(
-                        label=f"({departure_label},{symbol})->{arrival_label}",
+                        label=f"({departure_label},{symbol_label})->{arrival_label}",
                         new_arrival_label=new_label
                     )
 
@@ -151,8 +153,8 @@ class Automata:
             for tid in tids_to_remove:
                 departure_label: str = self.transactions[tid].departure_state.label
                 arrival_label: str = self.transactions[tid].arrival_state.label
-                symbol: str = self.transactions[tid].symbol
-                self.delete_transaction(label=f"({departure_label},{symbol})->{arrival_label}")
+                symbol_label: str = self.transactions[tid].symbol.label
+                self.delete_transaction(label=f"({departure_label},{symbol_label})->{arrival_label}")
 
             del self.states[sid]  # delete state
 
@@ -175,11 +177,11 @@ class Automata:
                 return tid
         return -1
 
-    def create_transaction(self, departure_label: str, arrival_label: str, symbol: str):
+    def create_transaction(self, departure_label: str, arrival_label: str, symbol_label: str):
         """Create transaction and update quintuple"""
 
         # transaction label indicates a transaction function from qi to qj consuming s: (qi,s)->qj
-        t_label: str = f"({departure_label},{symbol})->{arrival_label}"
+        t_label: str = f"({departure_label},{symbol_label})->{arrival_label}"
 
         # if the label don't exist
         if self.check_transaction_existance(label=t_label) == -1:
@@ -188,28 +190,28 @@ class Automata:
 
             if departure_sid >= 0:
                 if arrival_sid >= 0:
-                    if symbol in self.alphabet:
+                    if symbol_label in self.alphabet:
                         # if the departure and arrival exist and the alphabet contains the alphabet,
                         # create transaction and store at current tid position
                         self.transactions[self.tid] = Transaction(
                             departure_state=self.states[departure_sid],
                             arrival_state=self.states[arrival_sid],
-                            symbol=symbol
+                            symbol=Symbol(label=symbol_label)
                         )
                         self.tid += 1
 
                         self.tabular_notation = self.update_tabular_notation()
                     else:
-                        raise ValueError(f"Symbol {symbol} does not exist in alphabet.")
+                        raise ValueError(f"Symbol {symbol_label} does not exist in alphabet.")
                 else:
                     raise ValueError(f"State {arrival_label} does not exist in list of states.")
             else:
                 raise ValueError(f"State {departure_label} does not exist in list of states.")
         else:
-            raise ValueError(f"A transaction from {departure_label} to {arrival_label} consuming {symbol} already exists.")
+            raise ValueError(f"A transaction from {departure_label} to {arrival_label} consuming {symbol_label} already exists.")
 
     def update_transaction(
-            self, label: str, new_departure_label: str = None, new_arrival_label: str = None, new_symbol: str = None
+            self, label: str, new_departure_label: str = None, new_arrival_label: str = None, new_symbol_label: str = None
     ):
         """Update transaction information."""
 
@@ -232,8 +234,8 @@ class Automata:
                     self.transactions[tid].arrival_state = self.states[arrival_sid]
 
             # update symbol, if provided
-            if new_symbol in self.alphabet:
-                self.transactions[tid].symbol = new_symbol
+            if new_symbol_label in self.alphabet:
+                self.transactions[tid].symbol.label = new_symbol_label
 
             self.tabular_notation = self.update_tabular_notation()
         else:
@@ -258,28 +260,32 @@ class Automata:
         for label in labels:
             self.delete_transaction(label=label)
 
+    def get_transactions(self, current_sid: int, current_cursor: int, string: str) -> List[Transaction]:
+        """List all available transactions from current state."""
+
+        current_available_transactions: List[Transaction] = []
+
+        for transaction in self.transactions.values():
+            try:
+                if transaction.departure_state.label == self.states[current_sid].label:
+                    if transaction.symbol == string[current_cursor]:
+                        current_available_transactions.append(transaction)
+            except IndexError as e:
+                return []
+
+        return current_available_transactions
+
     def recognize(self, string: str, verbose: bool = False) -> bool:
         """Process a string of symbols and return a boolean to indicate acception and rejection."""
-
-        def get_transactions(current_sid: int, current_cursor: int) -> List[Transaction]:
-            """List all available transactions from current state."""
-
-            current_available_transactions: List[Transaction] = []
-
-            for transaction in self.transactions.values():
-                try:
-                    if transaction.departure_state.label == self.states[current_sid].label:
-                        if transaction.symbol == string[current_cursor]:
-                            current_available_transactions.append(transaction)
-                except IndexError as e:
-                    return []
-
-            return current_available_transactions
 
         # declare initial setting
         cursor: int = 0
         sid: int = self.check_state_existance(label=self.initial_state.label) if self.initial_state else None
-        available_transactions: List[Transaction] = get_transactions(current_sid=sid, current_cursor=cursor)
+        available_transactions: List[Transaction] = self.get_transactions(
+            current_sid=sid,
+            current_cursor=cursor,
+            string=string
+        )
 
         if verbose:
             print(f"({self.states[sid].label},{string[cursor:]})", end=' -| ')
@@ -297,7 +303,11 @@ class Automata:
             sid = self.check_state_existance(label=chosen_transaction.arrival_state.label)
 
             # update the list of available transactions of the chosen state
-            available_transactions: List[Transaction] = get_transactions(current_sid=sid, current_cursor=cursor)
+            available_transactions: List[Transaction] = self.get_transactions(
+                current_sid=sid,
+                current_cursor=cursor,
+                string=string
+            )
 
             if verbose:
                 print(f"({self.states[sid].label},{string[cursor:]})", end=' -| ')
@@ -309,6 +319,16 @@ class Automata:
             return True
         return False
 
+    def match(self, string: str, substring: str) -> List[List[int]]:
+        """Collect the initial and final positions for all occurences of substring inside the string."""
+
+        cursor: int = 0
+
+        while cursor <= len(string):
+            pass
+
+        return [[]]
+
     def __str__(self):
         Q: str = ', '.join([str(state) for state in self.states.values()])
         S: str = ', '.join([str(symbol) for symbol in self.alphabet])
@@ -317,3 +337,154 @@ class Automata:
         F: str = ', '.join([str(state) for state in self.final_states.values()])
 
         return f"""{self.label} = (\n\t{{{Q}}},\n\t{{{S}}},\n\t{{{d}}},\n\t{s0},\n\t{{{F}}}\n)"""
+
+
+class Transducer(Automata):
+    def __init__(self, label: str, alphabet: Alphabet, output_alphabet: Alphabet):
+        super().__init__(label=label, alphabet=alphabet)
+        self.output_alphabet: Alphabet = output_alphabet
+        self.transactions: Dict[str, MealyTransaction] = {}
+
+        self.output_tabular_notation: pd.DataFrame() = self.update_output_tabular_notation()
+
+    def update_output_tabular_notation(self) -> pd.DataFrame:
+        """Dataframe that describes general information for all states."""
+
+        data: Dict[str, List[Union[str, bool, List[str]]]] = {
+            "sid": [sid for sid in self.states.keys()],
+            "initial": [state.is_initial for state in self.states.values()],
+            "final": [state.is_final for state in self.states.values()],
+            "state": [state.label for state in self.states.values()],
+        }
+
+        for symbol in self.alphabet:
+            symbol_transactions: Dict[str, List[str]] = {state: [] for state in data["state"]}
+            for transaction in self.transactions.values():
+                if transaction.symbol == symbol:
+                    symbol_transactions[transaction.departure_state.label].append(transaction.output.label)
+            data[str(symbol)] = [arrival_states for arrival_states in symbol_transactions.values()]
+
+        return pd.DataFrame(data=data)
+
+    def create_transaction(self, departure_label: str, arrival_label: str, symbol_label: str, output_label: str):
+        """Create transaction and update quintuple"""
+
+        # transaction label indicates a transaction function from qi to qj consuming s: (qi,s)->qj
+        t_label: str = f"({departure_label},{symbol_label}/{output_label})->{arrival_label}"
+
+        # if the label don't exist
+        if self.check_transaction_existance(label=t_label) == -1:
+            departure_sid: int = self.check_state_existance(label=departure_label)
+            arrival_sid: int = self.check_state_existance(label=arrival_label)
+
+            if departure_sid >= 0:
+                if arrival_sid >= 0:
+                    if symbol_label in self.alphabet:
+                        if output_label in self.output_alphabet:
+                            # if the departure and arrival exist and the alphabet contains the alphabet and
+                            # the output_alphabet contains the output,
+                            # create transaction and store at current tid position
+                            self.transactions[self.tid] = MealyTransaction(
+                                departure_state=self.states[departure_sid],
+                                arrival_state=self.states[arrival_sid],
+                                symbol=Symbol(label=symbol_label),
+                                output=Symbol(label=output_label)
+                            )
+                            self.tid += 1
+
+                            self.tabular_notation = self.update_tabular_notation()
+                            self.output_tabular_notation = self.update_output_tabular_notation()
+                        else:
+                            raise ValueError(f"Output {output_label} does not exist in output alphabet.")
+                    else:
+                        raise ValueError(f"Symbol {symbol_label} does not exist in alphabet.")
+                else:
+                    raise ValueError(f"State {arrival_label} does not exist in list of states.")
+            else:
+                raise ValueError(f"State {departure_label} does not exist in list of states.")
+        else:
+            raise ValueError(
+                f"A transaction from {departure_label} to {arrival_label} " +
+                f"consuming {symbol_label} and generating {output_label} already exists."
+            )
+
+    def update_transaction(
+            self, label: str, new_departure_label: str = None, new_arrival_label: str = None,
+            new_symbol_label: str = None, new_output_label: str = None
+    ):
+        """Update transaction information."""
+
+        # store tid
+        tid: int = self.check_transaction_existance(label=label)
+
+        if tid >= 0:
+            # update transaction information
+            departure_sid: int = self.check_state_existance(label=new_departure_label)
+            arrival_sid: int = self.check_state_existance(label=new_arrival_label)
+
+            # update departure label, if provided
+            if departure_sid >= 0:
+                if new_departure_label:
+                    self.transactions[tid].departure_state = self.states[departure_sid]
+
+            # update arrival label, if provided
+            if arrival_sid >= 0:
+                if new_arrival_label:
+                    self.transactions[tid].arrival_state = self.states[arrival_sid]
+
+            # update symbol, if provided
+            if new_symbol_label in self.alphabet:
+                self.transactions[tid].symbol = new_symbol_label
+
+            # update output, if provided
+            if new_output_label in self.output_alphabet:
+                self.transactions[tid].output = new_output_label
+
+            self.tabular_notation = self.update_tabular_notation()
+            self.output_tabular_notation = self.update_output_tabular_notation()
+        else:
+            raise ValueError(f"The transaction {label} doesn't exist.")
+
+    def recognize(self, string: str, verbose: bool = False) -> bool:
+
+        # declare initial setting
+        cursor: int = 0
+        sid: int = self.check_state_existance(label=self.initial_state.label) if self.initial_state else None
+        available_transactions: List[MealyTransaction] = self.get_transactions(
+            current_sid=sid,
+            current_cursor=cursor,
+            string=string
+        )
+
+        # if verbose:
+        #     print(f"({self.states[sid].label},{string[cursor:]})", end=' -| ')
+
+        # while the string has symbols left and there is available transactions
+        while cursor <= len(string) and len(available_transactions) > 0:
+
+            # choose a transaction from the list of chosen transactions
+            chosen_id: int = randint(0, len(available_transactions) - 1)
+            chosen_transaction = available_transactions[chosen_id]
+
+            print(chosen_transaction.output)
+
+            cursor += 1  # move the cursor
+
+            # move to the sid indicated by the chosen transaction
+            sid = self.check_state_existance(label=chosen_transaction.arrival_state.label)
+
+            # update the list of available transactions of the chosen state
+            available_transactions: List[Transaction] = self.get_transactions(
+                current_sid=sid,
+                current_cursor=cursor,
+                string=string
+            )
+
+            # if verbose:
+            #     print(f"({self.states[sid].label},{string[cursor:]})", end=' -| ')
+
+        if self.states[sid].is_final and cursor >= len(string):
+            # if verbose:
+            #     print(f"({self.states[sid].label},{None})")
+            return True
+        return False
