@@ -14,6 +14,12 @@ class Alphabet:
     def __str__(self):
         return str(self.symbols)
 
+    def __len__(self):
+        return len(self.symbols)
+
+    def __getitem__(self, item):
+        return self.symbols[item]
+
     def __repr__(self):
         return str(self.symbols)
 

@@ -319,15 +319,6 @@ class Automata:
             return True
         return False
 
-    def match(self, string: str, substring: str) -> List[List[int]]:
-        """Collect the initial and final positions for all occurences of substring inside the string."""
-
-        cursor: int = 0
-
-        while cursor <= len(string):
-            pass
-
-        return [[]]
 
     def __str__(self):
         Q: str = ', '.join([str(state) for state in self.states.values()])
@@ -487,4 +478,53 @@ class Transducer(Automata):
             # if verbose:
             #     print(f"({self.states[sid].label},{None})")
             return True
+        print(self.states[sid], string[cursor])
         return False
+
+    def match(self, string: str, word: str):
+        """Collect the initial and final positions for all occurences of substring inside the string."""
+
+        # declare initial setting
+        cursor: int = 0
+        sid: int = self.check_state_existance(label=self.initial_state.label) if self.initial_state else None
+        available_transactions: List[MealyTransaction] = self.get_transactions(
+            current_sid=sid,
+            current_cursor=cursor,
+            string=string
+        )
+
+        # while the string has symbols left and there is available transactions
+        while cursor <= len(string) and len(available_transactions) > 0:
+            # choose a transaction from the list of chosen transactions
+            chosen_id: int = randint(0, len(available_transactions) - 1)
+            chosen_transaction = available_transactions[chosen_id]
+
+            if chosen_transaction.output == "#":
+                print(f"Position: {cursor}-{len(word)}={cursor - len(word)}")
+
+            cursor += 1  # move the cursor
+
+            # move to the sid indicated by the chosen transaction
+            sid = self.check_state_existance(label=chosen_transaction.arrival_state.label)
+
+            # update the list of available transactions of the chosen state
+            available_transactions: List[Transaction] = self.get_transactions(
+                current_sid=sid,
+                current_cursor=cursor,
+                string=string
+            )
+
+        if self.states[sid].is_final and cursor >= len(string):
+            return True
+        return False
+
+    def __str__(self):
+        Q: str = ', '.join([str(state) for state in self.states.values()])
+        S: str = ', '.join([str(symbol) for symbol in self.alphabet])
+        D: str = ', '.join([str(symbol) for symbol in self.output_alphabet])
+        d: str = ', '.join([str(transaction) for transaction in self.transactions.values()])
+        l: str = ', '.join([str(transaction) for transaction in self.transactions.values()])
+        s0: str = str(self.initial_state)
+        F: str = ', '.join([str(state) for state in self.final_states.values()])
+
+        return f"""{self.label} = (\n\t{{{Q}}},\n\t{{{S}}},\n\t{{{d}}},\n\t{s0},\n\t{{{F}}}\n)"""
